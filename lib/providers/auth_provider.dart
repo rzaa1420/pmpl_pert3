@@ -1,31 +1,84 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 
 class AuthProvider extends ChangeNotifier {
-  // TODO 1: simpan state login di sini (_isAuthenticated + _token + getter).
-  bool _isAuthenticated = false;
-  String? _token;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  bool get isAuthenticated => _isAuthenticated;
-  String? get token => _token;
+  User? _user;
 
-  Future<bool> login(String email, String password) async {
-    // TODO 2: simulasi request login (delay 1 detik). Aturan lolos:
-    // email tidak kosong dan password min 6 karakter → set state,
-    // notifyListeners(), return true. Jika tidak, return false.
-    await Future.delayed(const Duration(seconds: 1));
-    if (email.isNotEmpty && password.length >= 6) {
-      _isAuthenticated = true;
-      _token = 'token_auth_dummy_12345'; //
-      notifyListeners();
-      return true;
-    }
-    return false;
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  User? get user => _user;
+
+  bool get isAuthenticated => _user != null;
+  String? get token => null;
+
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
+
+  void setUser(User? user) {
+    _user = user;
+    notifyListeners();
   }
 
-  void logout() {
-    // TODO 3: reset state + notifyListeners().
-    _isAuthenticated = false;
-    _token = null;
+  Future<bool> register(String email, String password) async {
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      _user = cred.user;
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _errorMessage = _pesanError(e.code);
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> login(String email, String password) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final cred = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      _user = cred.user;
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _errorMessage = _pesanError(e.code);
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> logout() async {
+    await _auth.signOut();
+  }
+
+  String _pesanError(String code) {
+    if (code == 'user-not-found' || code == 'invalid-credential') {
+      return 'Email atau password salah.';
+    }
+    if (code == 'email-already-in-use') return 'Email sudah dipakai.';
+    if (code == 'weak-password') return 'Password min 6 karakter.';
+    if (code == 'invalid-email') return 'Format email salah.';
+    if (code == 'configuration-not-found') {
+      return 'Auth belum aktif di Console: enable Email/Password dulu.';
+    }
+    if (code == 'network-request-failed') {
+      return 'Tidak ada koneksi internet';
+    }
+    return 'Gagal ($code)';
   }
 }
